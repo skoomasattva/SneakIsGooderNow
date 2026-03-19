@@ -31,6 +31,7 @@ local aux_util = require('openmw_aux.util')
 local DEFS = require(mp .. 'utils/sneak_defs')
 local gutils = require(mp .. 'utils/gutils')
 local selfActor = gutils.Actor:new(omwself)
+local settings = require(mp .. 'settings').settings
 
 local module = {}
 
@@ -180,7 +181,7 @@ local function sneakCheck(ast, ps, extraMods)
     if ast.inLOS == false then return true,nil end
 
     local elusivenessScore = elusiveness(ast.distance, ps, extraMods)
-    local awarenessScore = awareness(ast, ps, extraMods)
+    local awarenessScore = awareness(ast, ps, extraMods) * settings.DifficultyMultiplier
     local sneakChance = math.min(100, math.max(0, elusivenessScore - awarenessScore))
     local success = math.random(0, 100) <= sneakChance
     -- gutils.print("elusivenessScore: " .. elusivenessScore .. ", awarenessScore: " .. awarenessScore .. ", sneakChance: " .. sneakChance .. ", success: " .. tostring(success))

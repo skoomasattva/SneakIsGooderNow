@@ -288,8 +288,7 @@ function DetectionMarker:disappear(wasSuccessful, autoDestroy)
         function(value)
             -- Callback to execute after animation completes
             if autoDestroy then
-                self.element:destroy()
-                self.destroyed = true
+                self:destroy()
             end
         end
     )
@@ -298,6 +297,11 @@ function DetectionMarker:disappear(wasSuccessful, autoDestroy)
     self.tweeners["disappear"] = tweener
 
     return "disappear"
+end
+
+function DetectionMarker:destroy()
+    self.element:destroy()
+    self.destroyed = true
 end
 
 -- Method to update all active tweeners

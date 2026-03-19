@@ -28,6 +28,28 @@ I.Settings.registerGroup {
                 max = 1
             },
             name = "Detection marker opacity"
+        },
+        {
+            key = "WeaponBonus",
+            renderer = "number",
+            default = 0.5,
+            argument = {
+                min = 0,
+                max = 1
+            },
+            name = "Weapon skill bonus while sneaking",
+            description = "A percentile value (0.5 = 50%) that determines the bonus to weapon skill while sneaking."
+        },
+        {
+            key = "DifficultyMultiplier",
+            renderer = "number",
+            default = 1.0,
+            argument = {
+                min = 0.1,
+                max = 5.0
+            },
+            name = "Difficulty multiplier",
+            description = "Multiplies enemy attentiveness. Higher values make enemies more attentive."
         }
     },
 }

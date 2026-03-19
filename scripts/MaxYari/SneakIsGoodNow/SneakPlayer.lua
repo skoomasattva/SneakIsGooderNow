@@ -18,6 +18,7 @@ local itemutil = require(mp .. "utils/item_utils")
 local detection = require(mp .. "detection_math")
 local aggression = require(mp .. "aggression_math")
 local DetectionMarker = require(mp .. "Sneak_ui_elements")
+local settings = require(mp .. 'settings').settings
 local selfActor = gutils.Actor:new(omwself)
 
 gutils.print("Sneak! E-N-G-A-G-E-D", 0)
@@ -127,9 +128,9 @@ local function detectionLogicTick(dt)
     if not lastCell or (lastCell ~= cell and not (lastCell.isExterior and cell.isExterior)) then
         lastCell = cell
         for id, ast in pairs(persistantActorStatuses) do
-            if ast.cell ~= cell then 
-                if ast.marker then
-                    ast.marker:disappear()
+            if ast.cell ~= cell then                 
+                if ast.marker then                    
+                    ast.marker:destroy()
                 end                
                 persistantActorStatuses[id] = nil
                 observerActorStatuses[id] = nil
@@ -315,7 +316,7 @@ local function onUpdate(dt)
                 oldStat.modifier = oldStat.modifier - skillMod
             end
 
-            skillMod = stat.base / 2            
+            skillMod = stat.base * settings.WeaponBonus            
             modifiedSkill = skill
             stat.modifier = stat.modifier + skillMod
         end        
