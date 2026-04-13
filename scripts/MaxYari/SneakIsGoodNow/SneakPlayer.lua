@@ -371,11 +371,14 @@ local function onCombatTargetsChanged(e)
 
     if not ast.isDead and gutils.arrayContains(ast.combatTargets, omwself.object) then
         gutils.print("Player: Combat targets changed for " .. e.actor.recordId, "Player is a target", 1)
-        ast.fightingPlayer = true       
-        ast.isAggressive = true 
+        ast.fightingPlayer = true
+        ast.isAggressive = true
         observerActorStatuses[e.actor.id] = ast
     else
         ast.fightingPlayer = false
+        if ast.isFriend then
+            observerActorStatuses[e.actor.id] = nil
+        end
     end
 end
 
@@ -386,6 +389,9 @@ local function onGetFollowTargets(e)
     local ast = getAst(e.actor)
     ast.followTargets = e.targets
     ast.isFriend = isFriend(ast)
+    if ast.isFriend then
+        observerActorStatuses[e.actor.id] = nil
+    end
     -- gutils.print(e.actor.recordId, "Is a friend",ast.isFriend, 1)
 end
 
