@@ -51,7 +51,8 @@ local detectionDecreaseRate = 0.25  -- fixed decrease rate per second
 
 -- "ps" stands for "Player State"
 local ps = {
-    isSneaking = false,
+    isSneaking = false,      -- real sneak (controls.sneak): attempting AND not locked out
+    attemptingSneak = false, -- sustained sneak intent (hold/toggle); drives fake sneak + the meter
     detectedByNonAggro = false,
     lockedOut = false,
     isMoving = false,
@@ -89,13 +90,13 @@ local inCombat = false
 -- Tracks the previous tick's sneaking state for the sneak-damage-bonus stale-cleanup sweep.
 local lastSneakingForBonus = false
 
--- Event-driven HUD eye state machine ---------------------------------------------------------
-local EYE_FADE = 0.5        -- seconds to quick-fade the eye out once there's nothing left to show
+-- HUD eye visibility ---------------------------------------------------------------------------
+-- The meter is shown iff the player is attempting to sneak (ps.attemptingSneak) -- nothing else.
+-- While attempting it tracks live detection (and the cooldown decay during a lockout); when intent
+-- ends it quick-fades out.
+local EYE_FADE = 0.5        -- seconds to quick-fade the eye out once intent ends
 local eyePhase = nil        -- nil | "show" | "fade"
 local eyeFadeTimer = 0
-local eyeSneakAttempt = false  -- did the player press sneak this frame (rising edge, set in onUpdate)
-local sneakIntentPrev = false  -- previous frame's raw sneak intent
-local eyeWasLockedOut = false  -- previous frame's lockout state (for kick-edge detection)
 
 -- Sneak-attack confirmation message ("Critical Strike for #.#X damage!") ------------------------
 -- Mirrors the Horizontal Compass cell-name display: a single HUD Text element, shown solid then
@@ -109,7 +110,15 @@ local sneakMsgTimer = 0            -- counts down from SNEAK_MSG_DURATION
 local function showSneakMessage(mult)
     if not settings.ShowSneakAttackMessage then return end
     local text = string.format("Critical Strike for %.1fX damage!", mult)
-    local relY = settings.SneakMessageY or 0.85
+    -- "Classic" routes through the engine's standard top-of-screen message; "Modern" uses the
+    -- mod's own centered, fading HUD text below.
+    if settings.SneakAttackMessageStyle == "Classic" then
+        ui.showMessage(text)
+        return
+    end
+    -- SneakMessageX/Y use the same 0=center convention as HudOffsetX/Y: convert to relativePosition.
+    local relX = 0.5 + (settings.SneakMessageX or 0) * 0.5
+    local relY = 0.5 + (settings.SneakMessageY or 0) * 0.5
     if not sneakMsgElement then
         sneakMsgElement = ui.create {
             layer = "HUD",
@@ -119,14 +128,14 @@ local function showSneakMessage(mult)
                 textSize = 22,
                 textColor = SNEAK_MSG_COLOR,
                 textShadow = true,
-                relativePosition = util.vector2(0.5, relY),
+                relativePosition = util.vector2(relX, relY),
                 anchor = util.vector2(0.5, 0.5),
                 alpha = 1,
             }
         }
     else
         sneakMsgElement.layout.props.text = text
-        sneakMsgElement.layout.props.relativePosition = util.vector2(0.5, relY)
+        sneakMsgElement.layout.props.relativePosition = util.vector2(relX, relY)
         sneakMsgElement.layout.props.alpha = 1
         sneakMsgElement:update()
     end
@@ -247,9 +256,13 @@ local function detectionLogicTick(dt)
     end
 
     -- Throttled nearby scan: new observers picked up every ~0.2s instead of every frame;
-    -- existing observers in observerActorStatuses continue to be processed every frame below
+    -- existing observers in observerActorStatuses continue to be processed every frame below.
+    -- Runs at ALL times now (not gated on sneaking) so detection stays "warm" on standby: in-LOS
+    -- observers climb to detected via sneakCheck's not-sneaking early-return, out-of-LOS ones decay.
+    -- This means the meter has a current value the instant you enter sneak instead of restarting at 0,
+    -- which closes the toggle-sneak grace-period exploit.
     nearbyCheckTimer = nearbyCheckTimer + dt
-    if ps.isSneaking and nearbyCheckTimer >= nearbyCheckPeriod then
+    if nearbyCheckTimer >= nearbyCheckPeriod then
         nearbyCheckTimer = 0
         for _, actor in ipairs(nearby.actors) do
 
@@ -414,8 +427,8 @@ local function detectionLogicTick(dt)
                 ast.marker = nil
             end
         else
-            -- Show markers only when sneaking and detection progress is happening
-            local shouldShowMarker = (ps.isSneaking or ps.lockedOut) and not ast.isDead and not ast.isKnockedOut and ast.inLOS
+            -- Show markers only while attempting to sneak (matches the single-HUD meter's visibility)
+            local shouldShowMarker = ps.attemptingSneak and not ast.isDead and not ast.isKnockedOut and ast.inLOS
             if shouldShowMarker then
                 -- If marker doesnt exist but should - make it
                 if not ast.marker then ast.marker = DetectionMarker:new() end
@@ -470,36 +483,13 @@ local function detectionLogicTick(dt)
 
     -- Manage the single HUD detection eye ------
     ---------------------------------------------
-    -- Event-driven: shows the live "being spotted" gauge while you can still sneak, and otherwise
-    -- only flashes around lockout events (caught while sneaking, or trying to sneak while blocked)
-    -- then fades. The persistent "can't sneak" signal lives on the crosshair (companion mod via
-    -- isSneakBlocked), not here, so the eye no longer sits on screen for the whole fight.
+    -- Visible iff the player is attempting to sneak -- nothing else. While attempting it shows the live
+    -- detection gauge, including the cooldown decaying during a lockout (setLocked tints it). When intent
+    -- ends it quick-fades out. (AlwaysShowMeter is now moot: the meter is always up while attempting.)
     if useHudMeter then
-        local kickEdge = ps.lockedOut and not eyeWasLockedOut
+        local shouldShow = ps.attemptingSneak
 
-        -- Shown solid (at the configured opacity) while there's something to report:
-        --   live     = sneaking, not blocked, actively being detected (the rising gauge); with
-        --              AlwaysShowMeter on, the meter stays up the whole time you're sneaking.
-        --   cooldown = caught while sneaking; show the decaying red gauge until it reaches 0.
-        -- Combat is excluded (the red crosshair carries that); there the eye only flashes on attempts.
-        local liveShow = ps.isSneaking and not ps.lockedOut and (settings.AlwaysShowMeter or maxProgress > 0)
-        local cooldownShow = ps.lockedOut and not inCombat
-        local shouldShow = liveShow or cooldownShow
-
-        -- 1. Flash triggers
-        if kickEdge and not inCombat then
-            -- Caught while sneaking: pop the flash; the gauge then stays until detection decays to 0.
-            if not hudMarker or hudMarker.destroyed then hudMarker = DetectionMarker:new({ hud = true }) end
-            hudMarker:flash()
-        elseif eyeSneakAttempt and ps.lockedOut then
-            -- Trying to sneak while blocked: re-flash as a reminder.
-            if not hudMarker or hudMarker.destroyed then hudMarker = DetectionMarker:new({ hud = true }) end
-            hudMarker:flash()
-            -- Mid-combat there's no persistent eye, so flash then fade it back out.
-            if inCombat then eyePhase = "fade"; eyeFadeTimer = EYE_FADE end
-        end
-
-        -- 2. Phase resolution: stay solid while shown; quick-fade out once there's nothing to show.
+        -- Phase resolution: stay solid while attempting; quick-fade out once intent ends.
         if shouldShow then
             eyePhase = "show"
         elseif eyePhase == "show" then
@@ -509,7 +499,7 @@ local function detectionLogicTick(dt)
             if eyeFadeTimer <= 0 then eyePhase = nil end
         end
 
-        -- 3. Render
+        -- Render
         if eyePhase == nil then
             if hudMarker then
                 if not hudMarker.destroyed then hudMarker:destroy() end
@@ -537,8 +527,6 @@ local function detectionLogicTick(dt)
         hudMarker = nil
         eyePhase = nil
     end
-
-    eyeWasLockedOut = ps.lockedOut
 end
 
 
@@ -565,38 +553,38 @@ local function onUpdate(dt)
     end
 
     -- Resolve sneak input before reading isSneaking, so the whole tick sees a consistent value.
-    -- During lockout, sneak is forced off (no stance flicker). Otherwise, when the player opted to
-    -- let the mod own the sneak key, drive controls.sneak from the mod's own bound action.
     local modSneakHeld = input.getBooleanActionValue(SNEAK_ACTION)
 
-    -- Capture the player's sneak *intent* this frame BEFORE the lockout zeroes controls.sneak below.
-    -- With mod-owned input it's the raw action; otherwise it's whatever the engine set this frame.
-    -- The rising edge is a sneak "attempt" the HUD eye uses to re-flash while locked out.
-    local sneakIntent
-    if settings.UseModSneakInput then
-        sneakIntent = modSneakHeld
-    else
-        sneakIntent = omwself.controls.sneak == true
-    end
-    eyeSneakAttempt = sneakIntent and not sneakIntentPrev
-    sneakIntentPrev = sneakIntent
-
-    if ps.lockedOut then
-        omwself.controls.sneak = false
-        modSneakToggleState = false  -- don't auto-resume sneak when the cooldown ends
-    elseif settings.UseModSneakInput then
-        if settings.ModSneakToggle then
-            -- Toggle on the press (rising edge): press once to sneak, again to stand
-            if modSneakHeld and not modSneakHeldPrev then
-                modSneakToggleState = not modSneakToggleState
-            end
-            omwself.controls.sneak = modSneakToggleState
-        else
-            -- Hold-to-sneak
-            omwself.controls.sneak = modSneakHeld
+    -- Resolve the sustained "attempting to sneak" intent, INDEPENDENT of the lockout. This is the
+    -- player's request to sneak (hold or toggle); it drives fake sneak (FakeSneak.lua reads it via the
+    -- interface) and the meter's visibility. It must keep updating during the lockout so a cancel-press
+    -- still registers and so fake sneak can take over while real sneak is suppressed.
+    local attempting
+    if settings.ModSneakToggle == "Toggle" then
+        -- Toggle on the press (rising edge): press once to sneak, again to stand.
+        if modSneakHeld and not modSneakHeldPrev then
+            modSneakToggleState = not modSneakToggleState
         end
+        attempting = modSneakToggleState
+    else
+        -- Hold-to-sneak.
+        attempting = modSneakHeld
     end
     modSneakHeldPrev = modSneakHeld
+    ps.attemptingSneak = attempting
+
+    -- The mod always owns the sneak key: drive real sneak from the resolved intent.
+    omwself.controls.sneak = attempting
+
+    -- Post-detection cooldown: real sneak forced off while locked out (UNCHANGED). Fake sneak still
+    -- carries the crouch because attemptingSneak stays true, so the kick lands you in fake sneak. Real
+    -- sneak returns once the cooldown decays to 0 (lockout clears) and you're still attempting -- there
+    -- is no explicit "resume"; it just falls out of (attempting AND not lockedOut). NOTE: unlike before,
+    -- we deliberately do NOT clear modSneakToggleState here, so the lockout can't cancel the player's
+    -- sneak intent and stop fake sneak from taking over.
+    if ps.lockedOut then
+        omwself.controls.sneak = false
+    end
 
     -- Fetching locomotion statuses
     ps.isMoving = selfActor:getCurrentSpeed() > 0 or not selfActor:isOnGround()

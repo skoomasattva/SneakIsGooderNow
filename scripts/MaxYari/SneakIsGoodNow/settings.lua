@@ -40,26 +40,20 @@ I.Settings.registerGroup {
     permanentStorage = true,
     settings = {
         {
-            key = "UseModSneakInput",
-            renderer = "checkbox",
-            default = false,
-            name = "Use mod's own sneak key",
-            description = "Let the mod drive sneaking. Bind the key below, then unbind OpenMW's own Sneak in Options > Controls. Removes the sneak-stance flicker.",
-        },
-        {
             key = "SneakKeyBinding",
             renderer = "inputBinding",
             default = "",
             argument = { type = "action", key = "SneakIsGoodNow_Sneak" },
-            name = "Mod sneak key",
-            description = "Key/button used when the mod owns the sneak key.",
+            name = "Sneak Binding",
+            description = "Key/button used when the mod owns the sneak key. Bind it here, then unbind OpenMW's own Sneak in Options > Controls.",
         },
         {
             key = "ModSneakToggle",
-            renderer = "checkbox",
-            default = true,
-            name = "Sneak key toggles",
-            description = "On: tap to toggle. Off: hold to sneak. Only applies to the mod's own key.",
+            renderer = "select",
+            default = "Toggle",
+            argument = { l10n = 'SneakIsGoodNow', items = { "Toggle", "Hold" } },
+            name = "Sneak Mode",
+            description = "Toggle: tap to toggle sneak. Hold: hold the key to sneak.",
         },
     },
 }
@@ -100,15 +94,15 @@ I.Settings.registerGroup {
             default = 0,
             argument = { min = -1, max = 1 },
             name = "Meter horizontal offset",
-            description = "From screen center. Negative = left, positive = right.",
+            description = "Center is 0. Increase to move right, decrease to move down.",
         },
         {
             key = "HudOffsetY",
             renderer = "number",
-            default = 0,
+            default = 0.45,
             argument = { min = -1, max = 1 },
             name = "Meter vertical offset",
-            description = "From screen center. Negative = up, positive = down.",
+            description = "Center is 0. Increase to move down, decrease to move up.",
         },
         {
             key = "DifficultyMultiplier",
@@ -128,7 +122,7 @@ I.Settings.registerGroup {
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
     name = 'Sneak Attack Damage',
-    description = "Sneak attack damage can now scale per weapon type based on sneak level. Base multiplier always applies flat bonus, then weapon damage bonuses scale with sneak and stack on top.",
+    description = "Sneak attack damage scales per weapon type, based on sneak level. Base multiplier always applies a flat bonus, then weapon damage bonuses scale with sneak and stack on top.",
     order = 3,
     permanentStorage = true,
     settings = {
@@ -182,10 +176,10 @@ I.Settings.registerGroup {
         {
             key = "HandToHandSneakDamage",
             renderer = "select",
-            default = 8,
+            default = 13,
             argument = { l10n = 'SneakIsGoodNow', items = BONUS_STEPS },
             name = "Hand-to-hand",
-            description = "Unarmed drains fatigue until knockout; the mod multiplies that too, so a sneak punch can drop someone in one hit.",
+            description = "Multiplies fatigue damage for hand so a sneak punch can knock someone down.",
         },
     },
 }
@@ -202,8 +196,8 @@ I.Settings.registerGroup {
         {
             key = "WeaponBonus",
             renderer = "number",
-            default = 0.5,
-            argument = { min = 0, max = 1 },
+            default = 1,
+            argument = { min = 0, max = 2 },
             name = "Weapon skill bonus",
             description = "Bonus to weapon skill while sneaking (0.5 = +50%).",
         },
@@ -215,12 +209,28 @@ I.Settings.registerGroup {
             description = "Show a 'Critical Strike for <X> damage!' confirmation on a successful sneak hit.",
         },
         {
+            key = "SneakAttackMessageStyle",
+            renderer = "select",
+            default = "Classic",
+            argument = { l10n = 'SneakIsGoodNow', items = { "Classic", "Modern" } },
+            name = "Sneak attack message style",
+            description = "Classic: standard vanilla style message box. Modern: Floating text that fades out, looks better with some mods and scaling settings, but can get covered by message boxes.",
+        },
+        {
+            key = "SneakMessageX",
+            renderer = "number",
+            default = 0,
+            argument = { min = -1, max = 1 },
+            name = "Message horizontal offset",
+            description = "Center is 0. Increase to move right, decrease to move left.",
+        },
+        {
             key = "SneakMessageY",
             renderer = "number",
-            default = 0.85,
-            argument = { min = 0, max = 1 },
-            name = "Message height",
-            description = "Vertical position. 0 = top, 1 = bottom. (Horizontally centered.)",
+            default = 0.7,
+            argument = { min = -1, max = 1 },
+            name = "Message vertical offset",
+            description = "Center is 0. Increase to move down, decrease to move up.",
         },
     },
 }
@@ -231,6 +241,8 @@ I.Settings.registerGroup {
 -- value for it -- so a stale leftover here would shadow (and freeze) the real, moved setting. Drop any
 -- key from the old section that no longer belongs to it. Idempotent: after the first run there's nothing
 -- left to prune. Keep this list in sync with the 'Sneak Key' group above.
+-- NOTE: 'UseModSneakInput' is intentionally NOT in the kept list -- it was removed (the mod always owns
+-- the sneak key now), so its leftover value is pruned here.
 local function pruneMovedSettings(sectionName, keptKeys)
     local section = storage.playerSection(sectionName)
     local keep = {}
@@ -239,7 +251,15 @@ local function pruneMovedSettings(sectionName, keptKeys)
         if not keep[key] then section:set(key, nil) end
     end
 end
-pruneMovedSettings('SettingsSneakIsGoodNow', { 'UseModSneakInput', 'SneakKeyBinding', 'ModSneakToggle' })
+pruneMovedSettings('SettingsSneakIsGoodNow', { 'SneakKeyBinding', 'ModSneakToggle' })
+
+-- ModSneakToggle changed from a checkbox (boolean) to a select (string "Toggle"/"Hold"). An old boolean
+-- value lingering in permanentStorage would not match the new items list and breaks the select renderer.
+-- Clear any non-string value so the new "Toggle" default takes over.
+local sneakKeySection = storage.playerSection('SettingsSneakIsGoodNow')
+if type(sneakKeySection:get('ModSneakToggle')) ~= 'string' then
+    sneakKeySection:set('ModSneakToggle', nil)
+end
 
 return {
     settings = SettingsHelper:new({

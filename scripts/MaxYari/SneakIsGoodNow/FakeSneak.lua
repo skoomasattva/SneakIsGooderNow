@@ -500,15 +500,25 @@ local function onUpdate(dt)
     registerOverrides()
     if dt <= 0 then return end
 
-    -- Resolve the test action into fakeSneakActive (toggle or hold).
+    -- Fake sneak is driven by the player's sneak INTENT, published by SneakPlayer.lua: whenever the
+    -- player is attempting to sneak (hold/toggle), fake sneak is on. Real sneak runs on top when active
+    -- (sneakingActive() ORs both); when the lockout drops real sneak, intent stays true so fake sneak
+    -- carries the crouch. SneakPlayer runs before us in the omwscripts order, so this is fresh this frame.
+    local sp = I.SneakIsGoodNow
+    local attempting = sp and sp.playerState and sp.playerState.attemptingSneak or false
+
+    -- The experimental test action stays as an optional manual/debug override (toggle or hold), OR'd in.
     local held = input.getBooleanActionValue(FAKE_ACTION)
+    local testKeyActive
     if settings.FakeSneakToggle then
         if held and not heldPrev then toggleState = not toggleState end
-        fakeSneakActive = toggleState
+        testKeyActive = toggleState
     else
-        fakeSneakActive = held
+        testKeyActive = held
     end
     heldPrev = held
+
+    fakeSneakActive = attempting or testKeyActive
 
     -- This file runs after SneakPlayer.lua in the omwscripts order, so controls.sneak already
     -- reflects this frame's real-sneak decision. The scale below applies to EITHER sneak.
