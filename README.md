@@ -1,6 +1,6 @@
 # SNEAK IS GOODER NOW
 
-This is a fork of MaxYari's original **Sneak! Sneak Is Good Now** - still very much a WIP **currently under heavy development**. Mostly playable, probably, but lots of small known bugs, unfinished features, and missing polish, and I might accidentally reak it it at any time as I continue working on it.
+This is a fork of MaxYari's original **Sneak! Sneak Is Good Now** - still very much a WIP **currently under heavy development**. Mostly playable, probably, but lots of small known bugs, unfinished features, and missing polish, and I might accidentally break it it at any time as I continue working on it.
 
 ## FORK CHANGES AND FEATURES
 
