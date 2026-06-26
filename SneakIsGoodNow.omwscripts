@@ -1,2 +1,4 @@
 PLAYER: scripts\MaxYari\SneakIsGoodNow\SneakPlayer.lua
 NPC, CREATURE: scripts\MaxYari\SneakIsGoodNow\SneakActor.lua
+PLAYER: scripts\MaxYari\SneakIsGoodNow\FakeSneak.lua
+GLOBAL: scripts\MaxYari\SneakIsGoodNow\FakeSneakGlobal.lua

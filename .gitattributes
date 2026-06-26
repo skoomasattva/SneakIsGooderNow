@@ -1,0 +1,16 @@
+# Normalize line endings: store as LF in the repo, auto-convert on checkout.
+# Prevents Windows CRLF copies from showing every file as "modified".
+* text=auto
+
+# Force LF for source/text the engine reads, regardless of platform.
+*.lua    text eol=lf
+*.svg    text eol=lf
+*.omwscripts text eol=lf
+*.md     text eol=lf
+
+# Binary assets — never touch these.
+*.omwaddon binary
+*.png    binary
+*.dds    binary
+*.nif    binary
+*.bsa    binary

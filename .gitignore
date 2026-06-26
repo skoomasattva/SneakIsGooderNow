@@ -1,0 +1,10 @@
+# Personal working folders — not part of the mod
+backups - claude stay out/
+plans and docs/
+tools/
+
+# OS / editor cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/

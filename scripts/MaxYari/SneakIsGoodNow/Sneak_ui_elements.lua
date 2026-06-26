@@ -22,8 +22,11 @@ local markerGrayColor = util.color.hex("808080") -- Gray for non-aggressive
 local markerSize= util.vector2(50, 50) * markerSizeScale -- Size of the detection marker UI element
 local disapearAnimSize = markerSize * 1.5 -- Size to scale to when disappearing
 
--- Constructor that creates a new UI element upon instantiation
-function DetectionMarker:new()
+-- Constructor that creates a new UI element upon instantiation.
+-- opts.hud = true skips the automatic appear() fade-in, so a HUD-mode caller can own the
+-- element's alpha directly (its state machine drives the fade timing instead of a tween).
+function DetectionMarker:new(opts)
+    opts = opts or {}
     local instance = setmetatable({}, DetectionMarker)
 
     -- Initialize tweeners dictionary
@@ -91,8 +94,10 @@ function DetectionMarker:new()
         }
     })
 
-    -- Automatically trigger appear animation upon instantiation
-    instance:appear()
+    -- Automatically trigger appear animation upon instantiation (unless HUD mode owns alpha)
+    if not opts.hud then
+        instance:appear()
+    end
 
     return instance
 end
@@ -107,7 +112,11 @@ function DetectionMarker:setProgress(progress)
 
     -- Determine colors based on aggressive state and progress
     local fillColor, glowColor
-    if not self.isAggressive then
+    if self.locked then
+        -- Post-detection cooldown: always red regardless of progress
+        fillColor = markerFillDangerColor
+        glowColor = markerFillDangerColor
+    elseif not self.isAggressive then
         -- Non-aggressive: always gray
         fillColor = markerGrayColor
         glowColor = markerGrayColor
@@ -207,6 +216,21 @@ function DetectionMarker:setAggressive(aggressive)
     self.element:update()
 end
 
+-- HUD mode: pin the marker at screen center plus a fractional offset (offset is in units of
+-- half the screen size, so 1 == screen edge). Centers on the point rather than world-anchoring.
+function DetectionMarker:setHudPos(offset)
+    offset = offset or util.vector2(0, 0)
+    self.element.layout.props.anchor = util.vector2(0.5, 0.5)
+    self.element.layout.props.relativePosition = util.vector2(0.5 + offset.x * 0.5, 0.5 + offset.y * 0.5)
+    self.element:update()
+end
+
+-- Force the danger (red) color regardless of progress, used during the post-detection cooldown.
+function DetectionMarker:setLocked(locked)
+    self.locked = locked or false
+    self.element:update()
+end
+
 
 
 
@@ -234,6 +258,34 @@ function DetectionMarker:appear()
     self.tweeners["appear"] = tweener
 
     return "appear"
+end
+
+-- Brief scale "pop" used to draw attention (the red flash). Swells the marker up to ~1.5x and
+-- back to normal over ~0.3s without touching alpha, so a HUD caller's own fade timing is unaffected.
+-- Re-calling restarts the pop (used to re-flash on a repeated sneak attempt while locked out).
+function DetectionMarker:flash()
+    if self.destroyed then
+        return
+    end
+
+    local tweener = Tweener:new()
+
+    tweener:add(
+        0.3, -- Duration in seconds
+        Tweener.easings.easeOutQuad, -- Easing function
+        function(value)
+            local pulse = math.sin(value * math.pi) -- 0 -> 1 -> 0 over the tween
+            -- Base off the fixed rest size (not the current size) so a re-flash mid-pop stays consistent
+            local newSize = gutils.lerp(markerSize, disapearAnimSize, pulse)
+            self.element.layout.props.size = newSize
+            self.element.layout.content["detectionFillWrapper"].content["detectionFill"].props.size = newSize
+            self.element:update()
+        end
+    )
+
+    self.tweeners["flash"] = tweener
+
+    return "flash"
 end
 
 -- Method to create disappearance animation

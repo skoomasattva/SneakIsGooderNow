@@ -176,7 +176,9 @@ end
 -- Note: ast.inLOS must be set before calling this function
 local function sneakCheck(ast, ps, extraMods)
     -- if we aren't sneaking, then you don't pass the check.
-    if ps.isSneaking ~= true then return false, nil end
+    -- ...unless we're in the post-detection lockout, where the check still runs so detection
+    -- can decay naturally (facing/distance-aware) while sneak is forced off.
+    if ps.isSneaking ~= true and ps.lockedOut ~= true then return false, nil end
 
     if ast.inLOS == false then return true,nil end
 

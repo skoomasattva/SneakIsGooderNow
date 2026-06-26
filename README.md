@@ -7,7 +7,37 @@ An OpenMW mod that makes sneak mechanics playable. Sneak detection is now a visu
 Click on a preview below to watch a release trailer.
 [![Release Trailer](https://img.youtube.com/vi/e-O7qEIHpNw/0.jpg)](https://www.youtube.com/watch?v=e-O7qEIHpNw)
 
-Features:
+## What this fork changes (SneakIsGooderNow)
+
+This is a fork of MaxYari's original **Sneak!** (linked above) with some extra features and tweaks.
+Everything from the original mod still applies — these are the additions:
+
+- **A single, repositionable detection meter.** Instead of a marker floating over every NPC's head,
+  you get one meter on screen showing how close the nearest threat is to spotting you. You can move
+  it, change its opacity, or switch back to the old per-NPC markers in the settings.
+
+- **Getting spotted no longer locks you out of sneaking until you run away.** Once you're detected,
+  the detection now cools down on its own; as soon as it fully fades you can sneak again.
+
+- **Configurable sneak-attack damage.** A base damage multiplier that always applies, plus separate
+  bonuses per weapon type (short blade, one-handed, two-handed, marksman, hand-to-hand) that grow
+  with your Sneak skill and stack on top of the base.
+
+- **Bow and crossbow sneak attacks finally hit hard.** Fixes the long-standing vanilla quirk where
+  ranged sneak attacks were much weaker than melee ones.
+
+- **A sneak punch can knock someone out in one hit.**
+
+- **Optional on-screen "Critical Strike!" confirmation** when a sneak attack lands.
+
+- **Optional dedicated sneak key** (hold or toggle) that removes the brief stance-flicker you'd
+  otherwise see the moment you get caught.
+
+- **A reorganized settings menu** so all of the above is easy to find.
+
+---
+
+Features (original):
 
 - Gradual visual detection progress instead of instant detection.
 
@@ -94,3 +124,5 @@ And also to the entirety of the OpenMW community, my inspiration almost always c
 To be honest, nowadays everyone seem to be using LLMs to some capacity, so leaving disclaimers like that becomes pointless, but sometimes I still do since I know some people are bothered by the whole AI thing (not without a reason) and will appreciate a disclaimer.
 
 So I mostly used Qwen to help with some coding tasks and with spelling and grammar in this readme, as well as ChatGPT for a research into creature aggression OpenMW source code and porting that to Lua.
+
+This fork was made yelling at claude.
