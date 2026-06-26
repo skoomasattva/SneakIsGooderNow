@@ -1,6 +1,9 @@
 # SNEAK IS GOODER NOW
 
-This is a fork of MaxYari's original **Sneak! Sneak Is Good Now** - still very much a WIP **currently under heavy development**. Mostly playable, probably, but lots of small known bugs, unfinished features, and missing polish, and I might accidentally reak it it at any time as I continue working on it.
+This is a fork of MaxYari's original **Sneak! Sneak Is Good Now** - still very much a WIP **currently under heavy development**. Now playable. Probably. But still has some small known bugs, unfinished features, and missing polish. I might accidentally break it at any time as I continue working on it because I barely understand git or version control and am flying by the seat of my pants here.
+
+#### ReAnimationV2 IS NOW A HARD REQUIREMENT
+[Get it here](https://www.nexusmods.com/morrowind/mods/52596?tab=files) and thank MaxYari for making all of this possible. No, really. Not only did he make the original mod this fork is based on, the biggest thing this mod fixes (fake sneaking visuals) was only possible thanks to another mod of his.
 
 ## FORK CHANGES AND FEATURES
 
