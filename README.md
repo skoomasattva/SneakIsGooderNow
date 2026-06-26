@@ -1,40 +1,43 @@
-![Banner](images/banner_wide.png)
-
-# Sneak! - Sneak is good now.
-
-An OpenMW mod that makes sneak mechanics playable. Sneak detection is now a visually displayed gradual progress. It loosely follows original sneak detection formulas in a sense that whichever creature was difficult to sneak by in the original will also be difficult to sneak by now. There are many small tweaks to how those formulas work and how they translate into a gradual detection progress, aimed at providing a more fun gameplay experience. This mod attempts to strike a balance between gamified mechanics and """realism""".
-
-Click on a preview below to watch a release trailer.
-[![Release Trailer](https://img.youtube.com/vi/e-O7qEIHpNw/0.jpg)](https://www.youtube.com/watch?v=e-O7qEIHpNw)
-
 ## What this fork changes (SneakIsGooderNow)
 
-This is a fork of MaxYari's original **Sneak!** (linked above) with some extra features and tweaks.
-Everything from the original mod still applies — these are the additions:
+This is a fork of MaxYari's original **Sneak!** still under heavy development. Not quite in a fully
+playable, ship ready state at this time
+
+All new changes and features:
+
+- **Dedicated sneak key** eliminates animation jitter you would see when attemtping to enter sneak
+  while kicked ou of sneak.
 
 - **A single, repositionable detection meter.** Instead of a marker floating over every NPC's head,
-  you get one meter on screen showing how close the nearest threat is to spotting you. You can move
-  it, change its opacity, or switch back to the old per-NPC markers in the settings.
+  you can have one meter on screen. You can move it, change its opacity, or switch back to the old
+  per-NPC markers in the settings.
 
-- **Getting spotted no longer locks you out of sneaking until you run away.** Once you're detected,
-  the detection now cools down on its own; as soon as it fully fades you can sneak again.
+- **Organic cooldown being detected** Normal sneak detection logic now runs after being detected and
+  kicked out of sneak, allowing for an organic cooldown. The penalty for being detected is that the
+  detection has to fully cooldown before sneaking again. The original behavior kept detection locked
+  at fully detected until you broke line of sight, and NPCs could see an infinite distance in all 
+  directions after detecting you.
 
-- **Configurable sneak-attack damage.** A base damage multiplier that always applies, plus separate
-  bonuses per weapon type (short blade, one-handed, two-handed, marksman, hand-to-hand) that grow
-  with your Sneak skill and stack on top of the base.
+- **Configurable sneak-attack damage.** A base Critical Strike damage multiplier that always applies,
+  plus per weapon type bonuses that scale with your Sneak skill and stack on top of the base sneak 
+  multiplier. Short blades can be better at sneak attacks than warhammers.
+  
+- **Marksman Critical Strike Fix.**
+  The old bug where marksman only got a 1.5x multiplier instead of 4x with no Critical Strike! message
+  has been fixed. It's now treated the same as any other weapon on sneak attacks.
 
-- **Bow and crossbow sneak attacks finally hit hard.** Fixes the long-standing vanilla quirk where
-  ranged sneak attacks were much weaker than melee ones.
+- **Kock someone out.**
+  Hand to hand sneak attacks have their fatigue damage multiplied. I'm not here to fix hand to hand,
+  but it hasnt been left out.
 
-- **A sneak punch can knock someone out in one hit.**
+- **New "Critical Strike!" message** Vanilla style Critical Strike message now works for all weapon
+  types and confirms the final damage multiplier applied.
 
-- **Optional on-screen "Critical Strike!" confirmation** when a sneak attack lands.
-
-- **Optional dedicated sneak key** (hold or toggle) that removes the brief stance-flicker you'd
-  otherwise see the moment you get caught.
-
-- **A reorganized settings menu** so all of the above is easy to find.
-
+- **Coming soon** I figured out how to fake sneaking visually, meaning soon you'll be able to sneak
+  while detected like the vanilla behavior in all other TES titles. Animation work is complete, real
+  and fake sneak are visually 100% identical, transitioning between the two is 100% seamless. Not yet
+  incorproated into gameplay, but you can assign a key in the settings to test it out. 
+  
 ---
 
 Features (original):
@@ -48,81 +51,3 @@ Features (original):
 - Contrary to vanilla boots don't affect your sneak chances. All in all your equipment has no effect on your sneak.
 
 - Mod works by kicking you out of a sneaking stance when you are detected, so the engine can take over the NPC agression/attack logic, so dont be surprised when you are suddenly forced out of a sneaking stance - this is intended.
-
-
-## Recommendations
-
-Try [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) they go well together, as it adds some subtle sneak visual effects.
-
-There are also few sneak-related mods out there such as [Burglary Overhaul](https://www.nexusmods.com/morrowind/mods/56965) and [SHOP](https://www.nexusmods.com/morrowind/mods/57747), both mod authors were very helpful and Sneak! will eventually seamlessly work with both of them (but probably it doesnt right now). I haven't personally tested them together myself, but wanted to put them on your radar!
-
-## Installation
-
-NO MATTER WHICH INSTALLATION APPROACH YOU USE you need to **enable `SneakIsGoodNow.omwscripts` and `SneakIsGoodNow.omwaddon` files** inside the `ContentFiles` tab of OpenMW launcher. You are done, have fun!
-
-AND be sure to **enable `Toggle Sneak`** in scripts->OpenMW Controls: this option makes it so that you don't have to hold sneak button to sneak, this mod will not work properly without it.
-
-Install as any other OpenMW mod, if you installed an OpenMW mod before - you know what to do, information below is for those who are new to OpenMW modding.
-
-I'm usually lazy in describing all the ways one can install an OpenMW mod, but this time I'll do it justice! So if you are new to OpenMW mods - there are 3 distinct ways to install any OpenMW mod, here they are from least to most complicated:
-
-Use **ONE OF these methods**
-
-**A) Use Mod Organiser 2 with an OpenMW addon** - it automates installation of OpenMW mods and has Nexus integration - either drag and drop a downloaded mod archive into it or, if you are downloading from Nexus - MO2 will handle the mod download for you as soon as you press the download button. Probably you also need to click on the mod in MO2 after download is done and click install? I haven't used MO2 for a bit since I'm on Linux now, but I highly recommend MO2.
-
-**B) OR Install using an OpenMW launcher** - also quite a convenient method that's easy to use for mods that don't have a BAIN/FOMOD installer (a special option-selection tool bundled with some mods, this one does not use it). First extract the mod archive somewhere so it's now a single mod folder (not a `scripts` folder, but a mod folder containing a `scripts` folder), then in the OpenMW launcher go to `Data Directories` tab and use `Append` button to add the extracted mod folder to a list of Data Directories.
-
-**C) OR Take the contents of this mod's archive and drop them into** a `Data Files` folder inside your Morrowind installation (not OpenMW!).
-
-## For Developers
-
-**Sneak!** provides a minimalist interface exposing current player detection state. You can read about how to use script interfaces [here](https://openmw-zack.readthedocs.io/en/lua_global_new/reference/lua-scripting/overview.html#script-interfaces).
-
-Note that Sneak! mostly only works while player is sneaking, it does not do any detection or line-of-sight checks when player is not sneaking.
-
-Interface is available only on player scripts, it exposes a player detection state:
-
-```Lua
-local ps = I.SneakIsGoodNow.playerState
--- Available properties:
-ps.isSneaking -- boolean
-ps.detectedByNonAggro -- boolean
-ps.isMoving -- boolean
-ps.isInvisible -- boolean
-ps.chameleon -- 1 - 100 number - strength of chameleon effect on a player
-
-```
-
-Since the mod works by kicking you out of sneak state when you are detected - you can consider player detected when `ps.isSneaking` is false. Unless you are detected only by non-aggressive creatures (player is not booted out of sneak then), then `isSneaking` will still be true while `detectedByNonAggro` will be true.
-
-Furthermore there is a table with few properties that you can modify to affect how detectable player is:
-
-```Lua
-local extraMods = I.SneakIsGoodNow.playerState.extraMods
-extraMods.elusivenessMod = 1.0 -- default value
-extraMods.elusivenessConst = 0 -- default value
-```
-
-`elusivenessMod` is more or less a general modifier of how elusive player is, it's applied before chameleon; adds a flat bonus to overall elusiveness.
-
-`elusivenessConst` is a flat bonus that will be added to player's elusiveness score.
-
-If multiple mods will be altering these values - obviously last one will win, since I don't have a system in place for multiple mods to introduce their own separate modifiers, but it's a fairly niche use case so I'm sure it will be fiiiiiine.
-
-I also haven't tested this API at all, but I'm sure it will be fiiiiiine ;)
-
-## Appreciation
-
-Thanks to [Blurpandra](https://www.nexusmods.com/profile/blurpandra/mods?gameId=100) for sharing a sneak detection code from Burglary Overhaul mod. To [fallchildren](https://gitlab.com/fallchildren) and [choirbug](https://gitlab.com/olyukha) for inspiring me to try this janky aproach to a sneak overhaul - they are currently working on a "Dark Project" mod (you can find it in OpenMW discor in mods section) which is a more ambitious stealth overhaul inspired by Thief series mechanics. 
-
-Check their mods, especially the [footstep sound mod](https://gitlab.com/fallchildren/openmw-footsteps), choirbug made a whole bunch of very immersive amazing sounds for it (to hear them you will need to change the sound backend in the mod's settings).
-
-And also to the entirety of the OpenMW community, my inspiration almost always comes from interacting with OpenMW discord, sometimes we have some differences admittedly, but hey, who doesn't? Love you all :3
-
-## AI use discalimer
-
-To be honest, nowadays everyone seem to be using LLMs to some capacity, so leaving disclaimers like that becomes pointless, but sometimes I still do since I know some people are bothered by the whole AI thing (not without a reason) and will appreciate a disclaimer.
-
-So I mostly used Qwen to help with some coding tasks and with spelling and grammar in this readme, as well as ChatGPT for a research into creature aggression OpenMW source code and porting that to Lua.
-
-This fork was made yelling at claude.
