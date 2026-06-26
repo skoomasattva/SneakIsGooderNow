@@ -2,6 +2,16 @@
 backups - claude stay out/
 plans and docs/
 tools/
+References/
+
+# Dev-only / agent files — not for end users
+CLAUDE.md
+
+# Original author's marketing assets — not redistributing
+images/
+
+# Disabled upstream CI (MaxYari's Nexus auto-upload)
+.invalid_github/
 
 # OS / editor cruft
 Thumbs.db
