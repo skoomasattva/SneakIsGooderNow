@@ -410,9 +410,20 @@ local function detectionLogicTick(dt)
         -- Send spotted event and break sneak only when detection progress reaches 1.0
         if ast.progress >= 1.0 then
             if ast.isAggressive then
-                -- Enter the post-detection lockout. Sneak stays forced off (enforced in onUpdate),
-                -- but detection now decays naturally until it reaches 0 for all observers.
-                ps.lockedOut = true
+                if ast.fightingPlayer then
+                    -- Active combat: lock out every frame the player is attempting to sneak,
+                    -- since progress is pinned at 1.0 and there's no single crossing event.
+                    if ps.attemptingSneak then ps.lockedOut = true end
+                else
+                    -- Non-combat: lock out whenever we're attempting and this observer is already at
+                    -- full detection -- including the frame you press sneak with background-built
+                    -- detection already maxed. (Previously this required a fresh crossing of 1.0, which
+                    -- handed you a free hidden moment before the kick: the real sneak check would dip
+                    -- progress below 1.0 then re-climb, and only that re-crossing tripped the lockout.)
+                    if ps.attemptingSneak then
+                        ps.lockedOut = true
+                    end
+                end
             else
                 ps.detectedByNonAggro = true
             end
