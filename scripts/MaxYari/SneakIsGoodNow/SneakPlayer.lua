@@ -42,6 +42,13 @@ local WEAPON_CATEGORY_SETTING = {
     [WT.Bolt]              = "MarksmanSneakDamage",
 }
 
+-- Engine sneak-crit GMSTs, read live for the optional crit-strike debug readout. The mod's omwaddon
+-- neutralizes these so the mod owns sneak damage; reading them at runtime shows what the engine itself
+-- would still apply on an unaware hit (melee = fCombatCriticalStrikeMult, ranged = fCombatKODamageMult).
+-- These mirror the constants SneakActor.lua reads. GMSTs don't change, so read once.
+local MELEE_CRIT_MULT = core.getGMST("fCombatCriticalStrikeMult") or 4.0
+local RANGED_CRIT_MULT = core.getGMST("fCombatKODamageMult") or 1.5
+
 gutils.print("Sneak! E-N-G-A-G-E-D", 0)
 
 local sneakCheckPeriod = 0.33 -- seconds between sneak checks per actor
@@ -107,6 +114,20 @@ local SNEAK_MSG_COLOR = util.color.hex("caa676")-- ("efc36b")  -- the mod's tan/
 local sneakMsgElement = nil
 local sneakMsgTimer = 0            -- counts down from SNEAK_MSG_DURATION
 
+-- Crit-strike debug readout ---------------------------------------------------------------------
+-- Optional diagnostic HUD (styled like FakeSneak's debug readout) showing the live sneak-attack
+-- multiplier breakdown. Built/torn down by updateCritDebug below per the CritStrikeDebugHud setting.
+local critDebugEl = nil
+
+-- Ranged sneak-attack latch -------------------------------------------------------------------------
+-- A projectile's flight time lets the target finish detecting the player AFTER the shot is loosed, which
+-- would otherwise strip the sneak crit at impact. We detect the shot the frame it leaves the weapon (the
+-- equipped ammo / thrown stack drops by one) and broadcast SneakLatch so each observer freezes its
+-- release-time eligibility (see SneakActor.lua). Tracked here to spot the count decrement.
+local RANGED_LATCH_TTL = 3.0  -- seconds a latch stays valid; generously covers a projectile's flight
+local prevShotCount = nil     -- last frame's ammo/thrown-stack count
+local prevShotKey = nil       -- record id of that stack, so a weapon/ammo swap isn't misread as a shot
+
 local function showSneakMessage(mult)
     if not settings.ShowSneakAttackMessage then return end
     local text = string.format("Critical Strike for %.1fX damage!", mult)
@@ -144,6 +165,35 @@ end
 
 local function onSneakHit(e)
     showSneakMessage(e.mult or 1)
+end
+
+-- Crit-strike debug readout. Same element style as FakeSneak.lua's updateDebug (white HUD Text, shadow,
+-- top-center) but multi-line and positioned just below it so the two don't overlap. Gated on the setting,
+-- tearing the element down when off.
+local function updateCritDebug(label)
+    if not settings.CritStrikeDebugHud then
+        if critDebugEl then critDebugEl:destroy(); critDebugEl = nil end
+        return
+    end
+    if not critDebugEl then
+        critDebugEl = ui.create {
+            layer = "HUD",
+            type = ui.TYPE.Text,
+            props = {
+                text = label,
+                textSize = 20,
+                textColor = util.color.rgb(1, 1, 1),
+                textShadow = true,
+                multiline = true,
+                textAlignH = ui.ALIGNMENT.Center,
+                relativePosition = util.vector2(0.5, 0.18),
+                anchor = util.vector2(0.5, 0),
+            },
+        }
+    else
+        critDebugEl.layout.props.text = label
+        critDebugEl:update()
+    end
 end
 
 local interface = {
@@ -303,23 +353,40 @@ local function detectionLogicTick(dt)
     -- Total sneak-attack damage multiplier for the currently equipped weapon, computed once per tick and
     -- pushed (eligibility-gated) to each observer below. Additive: the flat baseline plus a Sneak-scaled
     -- weapon factor (0 unless short blade / marksman). The mod now owns sneak damage outright (the omwaddon
-    -- zeroes the engine's crit GMSTs), so this multiplier IS the sneak crit.
+    -- zeroes the engine's crit GMSTs), so this multiplier IS the sneak crit. The breakdown is computed every
+    -- tick (even when not sneaking) so the optional crit-strike debug readout reflects the live equipped
+    -- weapon; sneakMult itself is only applied to hits while actually sneaking.
+    local baseMult = settings.BaselineSneakDamage
+    local weaponObj = selfActor:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local weaponCategory, weaponSetting
+    if weaponObj and types.Weapon.objectIsInstance(weaponObj) then
+        weaponCategory = WEAPON_CATEGORY_SETTING[types.Weapon.record(weaponObj).type]
+        weaponSetting = weaponCategory and settings[weaponCategory]
+    else
+        -- Nothing in the weapon hand = unarmed (hand-to-hand).
+        weaponCategory = "HandToHandSneakDamage"
+        weaponSetting = settings.HandToHandSneakDamage
+    end
+    local sneakSkill = selfActor:getSkillStat("sneak").modified
+    local weaponFactor = 0
+    if weaponSetting and weaponSetting > 0 then
+        weaponFactor = weaponSetting * (sneakSkill / 100)
+    end
     local sneakMult = 1
     if ps.isSneaking then
-        local weaponFactor = 0
-        local weaponObj = selfActor:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
-        local setting
-        if weaponObj and types.Weapon.objectIsInstance(weaponObj) then
-            local key = WEAPON_CATEGORY_SETTING[types.Weapon.record(weaponObj).type]
-            setting = key and settings[key]
-        else
-            -- Nothing in the weapon hand = unarmed (hand-to-hand).
-            setting = settings.HandToHandSneakDamage
-        end
-        if setting and setting > 0 then
-            weaponFactor = setting * (selfActor:getSkillStat("sneak").modified / 100)
-        end
-        sneakMult = settings.BaselineSneakDamage + weaponFactor
+        sneakMult = baseMult + weaponFactor
+    end
+
+    -- Crit-strike debug readout: show the full multiplier breakdown so a wrong sneak hit can be diagnosed.
+    if settings.CritStrikeDebugHud then
+        updateCritDebug(string.format(
+            "CRIT DEBUG\nGMST melee=%.2f  ranged=%.2f\nbase=%.2f  weapon cap=%s (%s)\nsneak=%.0f -> weapon factor=%.2f\nTOTAL sneakMult=%.2f%s",
+            MELEE_CRIT_MULT, RANGED_CRIT_MULT,
+            baseMult, tostring(weaponSetting), tostring(weaponCategory),
+            sneakSkill, weaponFactor,
+            sneakMult, ps.isSneaking and "" or "  (not sneaking)"))
+    else
+        updateCritDebug(nil)
     end
 
     for actorId, ast in pairs(observerActorStatuses) do
@@ -541,6 +608,25 @@ local function detectionLogicTick(dt)
 end
 
 
+-- Current ammo/thrown-stack count for the equipped ranged weapon, plus a stable key identifying that
+-- stack. The projectile leaves inventory exactly at release, so a drop in this count between frames is a
+-- precise "shot fired" signal; the key lets us ignore count jumps caused by swapping weapon/ammo. Returns
+-- nil when no ranged weapon (or no ammo for a bow/crossbow) is equipped.
+local function getRangedShotState()
+    local weapon = selfActor:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    if not (weapon and types.Weapon.objectIsInstance(weapon)) then return nil end
+    local wtype = types.Weapon.record(weapon).type
+    if wtype == WT.MarksmanBow or wtype == WT.MarksmanCrossbow then
+        local ammo = selfActor:getEquipment(types.Actor.EQUIPMENT_SLOT.Ammunition)
+        if not ammo then return nil end
+        return ammo.count, ammo.recordId
+    elseif wtype == WT.MarksmanThrown then
+        -- Thrown weapon is its own projectile: the CarriedRight stack itself decrements on release.
+        return weapon.count, weapon.recordId
+    end
+    return nil
+end
+
 local function onUpdate(dt)
     if dt == 0 then
         return
@@ -613,6 +699,22 @@ local function onUpdate(dt)
     end
 
     detectionLogicTick(dt)
+
+    -- Ranged-shot latch: detect a projectile leaving the weapon (ammo/thrown stack dropped by one this
+    -- frame, same stack as last frame) and broadcast SneakLatch to nearby actors. Sent on EVERY ranged
+    -- shot, not just sneaking ones: each actor decides from its own current eligibility whether to freeze
+    -- the bonus or clear a stale latch (see onSneakLatch in SneakActor.lua). Sent after detectionLogicTick
+    -- so it's queued behind this frame's SneakBonus push and the actor latches its up-to-date state.
+    local shotCount, shotKey = getRangedShotState()
+    if shotCount and prevShotCount and shotKey == prevShotKey and shotCount < prevShotCount then
+        for _, actor in ipairs(nearby.actors) do
+            if actor ~= omwself.object then
+                actor:sendEvent(DEFS.e.SneakLatch, { ttl = RANGED_LATCH_TTL })
+            end
+        end
+    end
+    prevShotCount = shotCount
+    prevShotKey = shotKey
 
     -- Hold sneak off for the duration of the post-detection lockout (the kick no longer fires
     -- once progress falls below 1.0, so the flag keeps it suppressed until detection decays to 0).

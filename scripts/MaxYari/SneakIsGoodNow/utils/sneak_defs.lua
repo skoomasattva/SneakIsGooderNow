@@ -11,6 +11,7 @@ return {
     e = {
         ReportAttack = prefix.."ReportAttack",
         SneakBonus = prefix.."SneakBonus",
-        SneakHit = prefix.."SneakHit"
+        SneakHit = prefix.."SneakHit",
+        SneakLatch = prefix.."SneakLatch"
     }
 }

@@ -28,6 +28,26 @@ local RANGED_CRIT_MULT = core.getGMST("fCombatKODamageMult") or 1.5
 local sneakActive = false
 local sneakMult = 1
 
+-- Release-time sneak latch (ranged only). A projectile's flight gives this actor time to finish detecting
+-- the player AFTER the shot leaves the bow, which would otherwise strip the bonus mid-air (the classic
+-- "ranged sneak feels unreliable" problem). The player script broadcasts SneakLatch the frame a projectile
+-- spawns; if we were sneak-eligible at that moment we freeze the current multiplier here and honor it on
+-- the matching impact regardless of detection completing during the flight. Cleared on a non-eligible shot
+-- or once consumed/expired. latchExpiry is a core.getSimulationTime() deadline.
+local latchedMult = nil
+local latchExpiry = 0
+
+local function onSneakLatch(e)
+    if sneakActive then
+        latchedMult = sneakMult
+        latchExpiry = core.getSimulationTime() + (e.ttl or 3)
+    else
+        -- Shot fired while this actor already sees the player: drop any stale latch so it can't crit later.
+        latchedMult = nil
+        latchExpiry = 0
+    end
+end
+
 
 local function onGetFollowTargets(dt)
     for _, player in ipairs(nearby.players) do
@@ -101,19 +121,36 @@ I.Combat.addOnHitHandler(function(a)
             if fatigueDmg > 0 then a.damage.fatigue = fatigueDmg * KNOCKDOWN_DAMAGE_MULT; fatigueDmg = a.damage.fatigue end
         end
 
-        if sneakActive and playerDamageHit then
+        -- Resolve the sneak multiplier for this hit. Live state (sneakActive/sneakMult, pushed by the
+        -- player script) is authoritative. For RANGED hits we additionally honor the release-time latch:
+        -- it preserves the eligibility we had when the projectile left the bow, so detection completing
+        -- during its flight doesn't silently strip the crit on impact. effMult is nil when no bonus applies.
+        -- Latch is a player-only concept (only the player's sneaking sets one), so gate it on the attacker
+        -- being the player -- an NPC's ranged hit on this actor must not consume the player's pending latch.
+        local isPlayerRanged = a.sourceType == I.Combat.ATTACK_SOURCE_TYPES.Ranged
+            and types.Player.objectIsInstance(a.attacker)
+        local effMult = nil
+        if sneakActive then
+            effMult = sneakMult
+        elseif isPlayerRanged and latchedMult and core.getSimulationTime() < latchExpiry then
+            effMult = latchedMult
+        end
+        -- Any resolved player ranged hit (or miss) consumes this actor's latch so it can't carry to a later shot.
+        if isPlayerRanged then latchedMult = nil; latchExpiry = 0 end
+
+        if effMult and playerDamageHit then
             -- Multiply whichever damage actually landed by the mod's total sneak multiplier (baseline +
-            -- weapon factor). sneakMult is 1 when there's no bonus, so this is always safe to apply.
-            if sneakMult ~= 1 then
-                if healthDmg > 0 then a.damage.health = healthDmg * sneakMult end
-                if fatigueDmg > 0 then a.damage.fatigue = fatigueDmg * sneakMult end
+            -- weapon factor). effMult is never 1 here without a real bonus, so this is always safe to apply.
+            if effMult ~= 1 then
+                if healthDmg > 0 then a.damage.health = healthDmg * effMult end
+                if fatigueDmg > 0 then a.damage.fatigue = fatigueDmg * effMult end
             end
             -- Report the true total multiplier to the player for the optional "Critical Strike for #.#X!"
             -- message. engineCrit = whatever sneak crit the engine still applied before this handler (read
             -- live from the GMSTs above; normally 1.0 once the omwaddon zeroes them). actual landed damage
-            -- = base × engineCrit × sneakMult, so this report is exact even if a mod overwrites the GMSTs.
-            local engineCrit = (a.sourceType == I.Combat.ATTACK_SOURCE_TYPES.Ranged) and RANGED_CRIT_MULT or MELEE_CRIT_MULT
-            a.attacker:sendEvent(DEFS.e.SneakHit, { mult = engineCrit * sneakMult })
+            -- = base × engineCrit × effMult, so this report is exact even if a mod overwrites the GMSTs.
+            local engineCrit = isPlayerRanged and RANGED_CRIT_MULT or MELEE_CRIT_MULT
+            a.attacker:sendEvent(DEFS.e.SneakHit, { mult = engineCrit * effMult })
         end
 
         a.attacker:sendEvent(DEFS.e.ReportAttack, {attacker = a.attacker, target = omwself.object})
@@ -123,6 +160,7 @@ end)
 return {
     eventHandlers = {
         MaxYariUtil_GetFollowTargets = onGetFollowTargets,
-        [DEFS.e.SneakBonus] = onSneakBonus
+        [DEFS.e.SneakBonus] = onSneakBonus,
+        [DEFS.e.SneakLatch] = onSneakLatch
     }
 }

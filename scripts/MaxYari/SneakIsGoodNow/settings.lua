@@ -232,6 +232,14 @@ I.Settings.registerGroup {
             name = "Message vertical offset",
             description = "Center is 0. Increase to move down, decrease to move up.",
         },
+        {
+            key = "CritStrikeDebugHud",
+            renderer = "checkbox",
+            default = false,
+            name = "Show crit-strike debug readout",
+            description = "Diagnostic on-screen readout of the live sneak-attack multiplier breakdown " ..
+                "(engine crit GMSTs, base/weapon/total multipliers, sneak level). For troubleshooting only.",
+        },
     },
 }
 
