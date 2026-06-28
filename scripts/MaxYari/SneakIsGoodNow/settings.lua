@@ -28,8 +28,23 @@ I.Settings.registerPage {
     description = "The mod is active. Go sneak now.",
 }
 
+-- Register a settings group AND record which keys it owns, so we can prune stale/orphaned copies of those
+-- keys out of OTHER sections afterward. These are permanentStorage settings: when a setting moves between
+-- groups (sections), its old value lingers in the previous section, and SettingsHelper resolves a key to
+-- the FIRST section in its list that has a value -- so an earlier stale copy silently shadows and FREEZES
+-- the real setting at its old value. (This is exactly what pinned the weapon-damage multipliers at their
+-- old defaults regardless of the menu.) Deriving the prune list from the live registrations keeps it from
+-- drifting out of sync the next time a setting is added or moved.
+local ownedKeys = {}  -- sectionName -> set of keys that section legitimately owns
+local function registerGroup(group)
+    I.Settings.registerGroup(group)
+    local keys = {}
+    for _, s in ipairs(group.settings) do keys[s.key] = true end
+    ownedKeys[group.key] = keys
+end
+
 -- Group: sneak key handling -------------------------------------------------
-I.Settings.registerGroup {
+registerGroup {
     key = 'SettingsSneakIsGoodNow',
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
@@ -59,7 +74,7 @@ I.Settings.registerGroup {
 }
 
 -- Group: detection display + difficulty -------------------------------------
-I.Settings.registerGroup {
+registerGroup {
     key = 'SettingsSneakIsGoodNowDetection',
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
@@ -117,7 +132,7 @@ I.Settings.registerGroup {
 
 -- Group: sneak-attack damage ------------------------------------------------
 -- Shared explanation lives in the group description so the individual settings don't repeat it.
-I.Settings.registerGroup {
+registerGroup {
     key = 'SettingsSneakIsGoodNowDamage',
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
@@ -127,7 +142,7 @@ I.Settings.registerGroup {
     permanentStorage = true,
     settings = {
         {
-            key = "BaselineSneakDamage",
+            key = "BaselineSneakDamage", -- owned here (section 3); weapon mults live in section 4 below
             renderer = "select",
             default = 2,
             argument = { l10n = 'SneakIsGoodNow', items = BASELINE_STEPS },
@@ -136,7 +151,7 @@ I.Settings.registerGroup {
         },
     }
 }
-I.Settings.registerGroup {
+registerGroup {
     key = 'SettingsSneakIsGoodNowWeaponDamage',
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
@@ -144,6 +159,8 @@ I.Settings.registerGroup {
     description = "Maximum damage multplier per weapon type to add to base sneak damage multiplier. Scales with sneak level.",
     order = 4,
     permanentStorage = true,
+    -- NOTE: these keys previously lived in the 'Sneak Attack Damage' group (section 3). Their stale copies
+    -- there were shadowing these and freezing the multipliers at old defaults -- the prune below clears them.
     settings = {
         {
             key = "ShortBladeSneakDamage",
@@ -185,7 +202,7 @@ I.Settings.registerGroup {
 }
 
 -- Group: combat tweaks + on-screen feedback ---------------------------------
-I.Settings.registerGroup {
+registerGroup {
     key = 'SettingsSneakIsGoodNowFeedback',
     page = 'SneakIsGoodNowPage',
     l10n = 'SneakIsGoodNow',
@@ -200,6 +217,14 @@ I.Settings.registerGroup {
             argument = { min = 0, max = 2 },
             name = "Weapon skill bonus",
             description = "Bonus to weapon skill while sneaking (0.5 = +50%).",
+        },
+        {
+            key = "SneakAttacksNeverMiss",
+            renderer = "checkbox",
+            default = false,
+            name = "Sneak attacks never miss",
+            description = "Sets your weapon skill to a flat value while sneaking so a sneak attack always " ..
+                "lands. Overrides the weapon skill bonus multiplier if enabled.",
         },
         {
             key = "ShowSneakAttackMessage",
@@ -243,23 +268,16 @@ I.Settings.registerGroup {
     },
 }
 
--- One-time migration. Earlier versions kept most settings in the single 'SettingsSneakIsGoodNow' group;
--- they've since been split into their own groups. Because these are permanentStorage settings, the old
--- values still linger in that section, and SettingsHelper resolves a key to the FIRST section that has a
--- value for it -- so a stale leftover here would shadow (and freeze) the real, moved setting. Drop any
--- key from the old section that no longer belongs to it. Idempotent: after the first run there's nothing
--- left to prune. Keep this list in sync with the 'Sneak Key' group above.
--- NOTE: 'UseModSneakInput' is intentionally NOT in the kept list -- it was removed (the mod always owns
--- the sneak key now), so its leftover value is pruned here.
-local function pruneMovedSettings(sectionName, keptKeys)
+-- One-time (idempotent) migration. These are permanentStorage settings, so a value left behind when a
+-- setting moved groups -- or a setting that was removed entirely (e.g. 'UseModSneakInput') -- lingers in
+-- its old section forever and can shadow/freeze the real one (see the registerGroup note above). Prune
+-- every section down to the keys it actually owns. Derived from the live registrations, so it can't drift.
+for sectionName, keys in pairs(ownedKeys) do
     local section = storage.playerSection(sectionName)
-    local keep = {}
-    for _, k in ipairs(keptKeys) do keep[k] = true end
     for key in pairs(section:asTable()) do
-        if not keep[key] then section:set(key, nil) end
+        if not keys[key] then section:set(key, nil) end
     end
 end
-pruneMovedSettings('SettingsSneakIsGoodNow', { 'SneakKeyBinding', 'ModSneakToggle' })
 
 -- ModSneakToggle changed from a checkbox (boolean) to a select (string "Toggle"/"Hold"). An old boolean
 -- value lingering in permanentStorage would not match the new items list and breaks the select renderer.

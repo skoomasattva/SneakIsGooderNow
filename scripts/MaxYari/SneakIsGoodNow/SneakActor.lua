@@ -31,18 +31,19 @@ local sneakMult = 1
 -- Release-time sneak latch (ranged only). A projectile's flight gives this actor time to finish detecting
 -- the player AFTER the shot leaves the bow, which would otherwise strip the bonus mid-air (the classic
 -- "ranged sneak feels unreliable" problem). The player script broadcasts SneakLatch the frame a projectile
--- spawns; if we were sneak-eligible at that moment we freeze the current multiplier here and honor it on
--- the matching impact regardless of detection completing during the flight. Cleared on a non-eligible shot
--- or once consumed/expired. latchExpiry is a core.getSimulationTime() deadline.
+-- spawns, having already resolved eligibility ITS side -- it's the only place that knows the multiplier AND
+-- works for targets beyond the mod's detection range (which never become observers, so sneakActive/sneakMult
+-- are never set on them -- i.e. anything sniped from a distance). So we just honor whatever it sends: a mult
+-- means "eligible, freeze it"; nil means "not a sneak shot, clear any stale latch". Cleared once consumed or
+-- expired. latchExpiry is a core.getSimulationTime() deadline.
 local latchedMult = nil
 local latchExpiry = 0
 
 local function onSneakLatch(e)
-    if sneakActive then
-        latchedMult = sneakMult
+    if e.mult then
+        latchedMult = e.mult
         latchExpiry = core.getSimulationTime() + (e.ttl or 3)
     else
-        -- Shot fired while this actor already sees the player: drop any stale latch so it can't crit later.
         latchedMult = nil
         latchExpiry = 0
     end
@@ -130,13 +131,21 @@ I.Combat.addOnHitHandler(function(a)
         local isPlayerRanged = a.sourceType == I.Combat.ATTACK_SOURCE_TYPES.Ranged
             and types.Player.objectIsInstance(a.attacker)
         local effMult = nil
-        if sneakActive then
+        if isPlayerRanged then
+            -- Ranged is latch-driven: the player froze release-time eligibility (and the mult) when the
+            -- projectile loosed, so detection finishing mid-flight can't strip it, AND it covers targets
+            -- sniped from beyond detection range that never get a live SneakBonus (sneakActive stays false).
+            -- Fall back to live state for a point-blank shot whose latch hasn't been processed yet.
+            if latchedMult and core.getSimulationTime() < latchExpiry then
+                effMult = latchedMult
+            elseif sneakActive then
+                effMult = sneakMult
+            end
+            -- Consume the latch (on a hit or a miss) so it can't carry to a later shot.
+            latchedMult = nil; latchExpiry = 0
+        elseif sneakActive then
             effMult = sneakMult
-        elseif isPlayerRanged and latchedMult and core.getSimulationTime() < latchExpiry then
-            effMult = latchedMult
         end
-        -- Any resolved player ranged hit (or miss) consumes this actor's latch so it can't carry to a later shot.
-        if isPlayerRanged then latchedMult = nil; latchExpiry = 0 end
 
         if effMult and playerDamageHit then
             -- Multiply whichever damage actually landed by the mod's total sneak multiplier (baseline +

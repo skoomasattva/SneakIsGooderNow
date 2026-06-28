@@ -127,6 +127,8 @@ local critDebugEl = nil
 local RANGED_LATCH_TTL = 3.0  -- seconds a latch stays valid; generously covers a projectile's flight
 local prevShotCount = nil     -- last frame's ammo/thrown-stack count
 local prevShotKey = nil       -- record id of that stack, so a weapon/ammo swap isn't misread as a shot
+local lastSneakMult = 1       -- last tick's computed sneak multiplier; the ranged-latch broadcast (in
+                              -- onUpdate, outside detectionLogicTick's scope) needs it to fill the latch
 
 local function showSneakMessage(mult)
     if not settings.ShowSneakAttackMessage then return end
@@ -376,6 +378,7 @@ local function detectionLogicTick(dt)
     if ps.isSneaking then
         sneakMult = baseMult + weaponFactor
     end
+    lastSneakMult = sneakMult  -- expose for the ranged-latch broadcast in onUpdate
 
     -- Crit-strike debug readout: show the full multiplier breakdown so a wrong sneak hit can be diagnosed.
     if settings.CritStrikeDebugHud then
@@ -707,9 +710,18 @@ local function onUpdate(dt)
     -- so it's queued behind this frame's SneakBonus push and the actor latches its up-to-date state.
     local shotCount, shotKey = getRangedShotState()
     if shotCount and prevShotCount and shotKey == prevShotKey and shotCount < prevShotCount then
+        -- Resolve eligibility per target HERE, at release, on the player side. This is the only place that
+        -- knows both the multiplier AND each target's detection state, and -- unlike the observer-gated
+        -- SneakBonus push -- it reaches targets beyond detectionRange (anything sniped from a distance,
+        -- which never becomes an observer and so never has sneakActive set). A target with no status, or
+        -- one we haven't fully alerted and aren't fighting, counts as unaware -> eligible. The resolved
+        -- mult rides in the latch so the actor doesn't need its own (missing) live state to honor it.
         for _, actor in ipairs(nearby.actors) do
             if actor ~= omwself.object then
-                actor:sendEvent(DEFS.e.SneakLatch, { ttl = RANGED_LATCH_TTL })
+                local ast = getAstIfExists(actor)
+                local blocked = ast and (ast.fightingPlayer or (ast.progress or 0) >= 1.0 or ast.isDead)
+                local eligible = ps.isSneaking and not blocked
+                actor:sendEvent(DEFS.e.SneakLatch, { ttl = RANGED_LATCH_TTL, mult = eligible and lastSneakMult or nil })
             end
         end
     end
@@ -732,14 +744,26 @@ local function onUpdate(dt)
         local stat = selfActor:getSkillStat(skill)
 
         if ps.isSneaking then
-            if modifiedSkill ~= skill then
-                -- if we switched to a different skill, remove old modifier
+            -- Desired modifier for the current weapon skill. "Sneak attacks never miss" sets the skill to a
+            -- flat 666 (added as a modifier so it tears down cleanly like any other) and overrides the weapon
+            -- bonus multiplier; otherwise scale the base skill by the multiplier.
+            local desiredMod
+            if settings.SneakAttacksNeverMiss then
+                desiredMod = 666 - stat.base
+            else
+                desiredMod = stat.base * settings.WeaponBonus
+            end
+
+            -- Re-apply when the weapon skill changes OR the desired modifier changes (e.g. the player flips
+            -- the override toggle mid-sneak) -- otherwise a stale modifier from the other mode would persist.
+            if modifiedSkill ~= skill or skillMod ~= desiredMod then
                 if modifiedSkill then
                     local oldStat = selfActor:getSkillStat(modifiedSkill)
                     oldStat.modifier = oldStat.modifier - skillMod
                 end
-
-                skillMod = stat.base * settings.WeaponBonus
+                -- re-fetch in case we just subtracted from this same skill above
+                stat = selfActor:getSkillStat(skill)
+                skillMod = desiredMod
                 modifiedSkill = skill
                 stat.modifier = stat.modifier + skillMod
             end
