@@ -123,8 +123,9 @@ local critDebugEl = nil
 -- A projectile's flight time lets the target finish detecting the player AFTER the shot is loosed, which
 -- would otherwise strip the sneak crit at impact. We detect the shot the frame it leaves the weapon (the
 -- equipped ammo / thrown stack drops by one) and broadcast SneakLatch so each observer freezes its
--- release-time eligibility (see SneakActor.lua). Tracked here to spot the count decrement.
-local RANGED_LATCH_TTL = 3.0  -- seconds a latch stays valid; generously covers a projectile's flight
+-- release-time eligibility (see SneakActor.lua). The latch has NO timeout -- it's cleared only when the hit
+-- consumes it or when that actor actually detects us (SneakRevoke, sent from the detection loop below).
+-- Tracked here to spot the count decrement.
 local prevShotCount = nil     -- last frame's ammo/thrown-stack count
 local prevShotKey = nil       -- record id of that stack, so a weapon/ammo swap isn't misread as a shot
 local lastSneakMult = 1       -- last tick's computed sneak multiplier; the ranged-latch broadcast (in
@@ -471,6 +472,17 @@ local function detectionLogicTick(dt)
             ast.pushedSneak = eligible
         end
 
+        -- Ranged-latch revoke: the instant this actor actually becomes aware of us (full detection or
+        -- active combat) -- and ONLY then -- cancel any in-flight ranged latch it's holding. This is the
+        -- one thing that drops a latched ranged crit short of the hit consuming it; deliberately decoupled
+        -- from `eligible` so merely standing up / losing the sneak flag mid-flight can't revoke a shot that
+        -- was already loosed from stealth. Sent once on the rising edge (deduped via pushedDetected).
+        local detected = (ast.progress >= 1.0 or ast.fightingPlayer) and not ast.isDead
+        if detected and not (ast.pushedDetected or false) then
+            ast.actor:sendEvent(DEFS.e.SneakRevoke, {})
+        end
+        ast.pushedDetected = detected
+
         -- Track the highest detection for the single HUD meter
         if not ast.isDead and not ast.isKnockedOut and ast.progress > maxProgress then
             maxProgress = ast.progress
@@ -721,7 +733,7 @@ local function onUpdate(dt)
                 local ast = getAstIfExists(actor)
                 local blocked = ast and (ast.fightingPlayer or (ast.progress or 0) >= 1.0 or ast.isDead)
                 local eligible = ps.isSneaking and not blocked
-                actor:sendEvent(DEFS.e.SneakLatch, { ttl = RANGED_LATCH_TTL, mult = eligible and lastSneakMult or nil })
+                actor:sendEvent(DEFS.e.SneakLatch, { mult = eligible and lastSneakMult or nil })
             end
         end
     end
@@ -744,26 +756,14 @@ local function onUpdate(dt)
         local stat = selfActor:getSkillStat(skill)
 
         if ps.isSneaking then
-            -- Desired modifier for the current weapon skill. "Sneak attacks never miss" sets the skill to a
-            -- flat 666 (added as a modifier so it tears down cleanly like any other) and overrides the weapon
-            -- bonus multiplier; otherwise scale the base skill by the multiplier.
-            local desiredMod
-            if settings.SneakAttacksNeverMiss then
-                desiredMod = 666 - stat.base
-            else
-                desiredMod = stat.base * settings.WeaponBonus
-            end
-
-            -- Re-apply when the weapon skill changes OR the desired modifier changes (e.g. the player flips
-            -- the override toggle mid-sneak) -- otherwise a stale modifier from the other mode would persist.
-            if modifiedSkill ~= skill or skillMod ~= desiredMod then
+            if modifiedSkill ~= skill then
+                -- if we switched to a different skill, remove old modifier
                 if modifiedSkill then
                     local oldStat = selfActor:getSkillStat(modifiedSkill)
                     oldStat.modifier = oldStat.modifier - skillMod
                 end
-                -- re-fetch in case we just subtracted from this same skill above
-                stat = selfActor:getSkillStat(skill)
-                skillMod = desiredMod
+
+                skillMod = stat.base * settings.WeaponBonus
                 modifiedSkill = skill
                 stat.modifier = stat.modifier + skillMod
             end

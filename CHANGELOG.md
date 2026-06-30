@@ -75,6 +75,66 @@ The mod now owns sneak-attack damage outright (the engine's crit is neutralized 
   owning the multiplier in Lua, marksman sneak attacks now get the **same configurable baseline as
   melee**.
 
+#### Ranged sneak crit reliability — release-time latch (fixes "the crit doesn't apply on distant targets")
+**The bug:** marksman sneak crits were wildly inconsistent. They worked point-blank (and 100% of the
+time on enemies spawned at your feet in the testing cell) but routinely **failed on anything sniped
+from across a room/field** — distant rats, mudcrabs, etc. The on-screen multiplier readout looked
+correct, yet the crit didn't land.
+
+**Why it was there — two compounding causes:**
+1. *Timing race.* The sneak bonus was applied at projectile **impact**. A projectile's flight time
+   gives the target room to finish detecting you **mid-air**, stripping the bonus a frame before the
+   hit lands. Worse with bows/crossbows (slow arrows) than thrown weapons.
+2. *Observer-range gate (the real killer).* The mod's custom detection sim only tracks actors within
+   `detectionRange` — which is read straight from `fSneakUseDist`. This build's omwaddon raises that
+   GMST to **1000 units (~14 m)** (vanilla default is 500 / ~7 m) for an unrelated reason — to break
+   the engine's `awarenessCheck` so the mod owns detection — and the sim inherits that value as a side
+   effect. Only tracked "observers" receive the `SneakBonus` event that sets `sneakActive`/`sneakMult`
+   on the target. A target you **snipe from beyond ~14 m and have never approached** is never an
+   observer, so its `sneakActive` stays `false` forever → no crit, no matter what the readout says.
+   (Point-blank spawns in the test cell are well inside that radius, hence the 100% there.)
+   `detectionRange = fSneakUseDist` is conceptually wrong regardless of the number: in **vanilla** that
+   GMST is only the radius for the crouch-eye HUD and Sneak XP — *not* a detection cutoff (vanilla's
+   actual `awarenessCheck` has no distance cutoff at all; distance only scales the roll). The mod
+   author repurposed it as a cheap scope radius for the sim and flagged it provisional (`-- to do,
+   dont forget to change this`). It's an **acquisition** radius, not a maintenance one: once a target
+   comes within that range (or enters combat) it stays tracked at any distance until detection decays
+   — but a target you never get near is simply never acquired.
+
+**The fix — resolve eligibility on the player at release and ship it to the target:**
+- A shot is detected the frame the equipped **ammo / thrown stack count drops by one**
+  (`getRangedShotState` in `SneakPlayer.lua`).
+- At that instant the **player** resolves per-target eligibility (it alone knows both the multiplier
+  *and* each target's detection state) and broadcasts the resolved multiplier inside a **`SneakLatch`**
+  event to **every nearby actor** — not just observers. This is what reaches distant, never-acquired
+  targets. A target with no status, or one we haven't fully alerted and aren't fighting, counts as
+  **unaware → eligible**.
+- The target **freezes** that release-time multiplier and honors it on impact regardless of detection
+  completing during the flight — killing the timing race.
+- **No timeout.** The latch is dropped only when (a) the hit consumes it, or (b) the player is
+  **actually detected** by that actor — a **`SneakRevoke`** event sent from the player's detection
+  loop on the rising edge of `progress >= 1.0` **or** `fightingPlayer`. (Earlier work used a 3-second
+  TTL; removed, because a slow projectile can legitimately be airborne longer and we refuse to guess.)
+- Revocation is deliberately **decoupled from the generic `eligible` flag**: standing up, dropping the
+  sneak input, or getting locked out mid-flight does **not** cancel a shot already loosed from
+  stealth — *only the target genuinely noticing you* does.
+- **Melee is unchanged** (always inside detection range, so it keeps the live `sneakActive` path). For
+  point-blank ranged shots whose latch event hasn't been processed yet, the actor falls back to live
+  `sneakActive`.
+- Self-consistent with the model: a far target the sim never simulates is never "detected," so the
+  crit always lands; if detection is later widened to longer range, revocation tightens automatically
+  with no changes here. The `detectionRange` gate is untouched — it still scopes the meter sim, it
+  just no longer gates ranged crit eligibility.
+- Files: `SneakPlayer.lua`, `SneakActor.lua`, `utils/sneak_defs.lua` (new `SneakLatch` / `SneakRevoke`
+  events).
+
+#### Crit-strike debug readout (diagnostic)
+- Optional **Show crit-strike debug readout** (`CritStrikeDebugHud`, default OFF, *Combat & Feedback*).
+  Styled like the fake-sneak debug text: a live on-screen breakdown of the sneak-attack multiplier —
+  engine crit GMSTs, base multiplier, the weapon-type cap that should apply, the Sneak-scaled weapon
+  factor, and the resolved total. Added to diagnose the ranged-crit bug above; left in for tuning.
+- File: `SneakPlayer.lua` (`updateCritDebug`, computed every tick from the live equipped weapon).
+
 #### Knockdown damage bonus restored (1.5×)
 - Zeroing `fCombatKODamageMult` to take over sneak damage also removed the legitimate vanilla **1.5×
   vs knocked-down / knocked-out targets**. The mod quietly restores it as a hardcoded constant

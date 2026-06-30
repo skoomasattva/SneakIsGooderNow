@@ -663,6 +663,29 @@ end), {})
 -- clobbered whenever "Always Run" is on (the exact-2x run-speed bug). bindAction fixes it upstream; this
 -- write is kept only as belt-and-suspenders (and to keep the gait sample below truthful for the HUD).
 -- Real sneak already walks (engine-forced); only fake needs this. Never touches controls.sneak.
+-- Persist our TRUE pre-sneak scale across save/load. setScale mutates object.scale, which the engine
+-- bakes into the save; on reload a fresh script can't tell our 0.9 from the real base, so the
+-- `baseScale or object.scale` capture above used to re-grab the already-shrunk value and shrink AGAIN,
+-- compounding every load (the "incredible shrinking player" -- save while sneaking, reload, repeat).
+-- Race/sex height is a separate model-side multiplier (npcanimation.cpp) and is NOT involved; this is
+-- purely about not re-deriving our base from a contaminated live scale. We carry our own base across
+-- and snap the live scale back to it on load, so a save made mid-sneak can never stack.
+local function onSave()
+    return { baseScale = baseScale }
+end
+
+local function onLoad(data)
+    if data and data.baseScale then baseScale = data.baseScale end
+    -- Undo whatever shrunk scale the save restored: reset to the true base and force a resend so the
+    -- player can't appear shrunk for even one frame. (If there's no persisted base -- a pre-fix save --
+    -- we leave it to onUpdate's capture, which now at least stops compounding instead of healing.)
+    if baseScale then
+        appliedScale  = baseScale
+        lastSentScale = nil
+        core.sendGlobalEvent("SneakIsGoodNow_SetScale", { object = omwself.object, scale = baseScale })
+    end
+end
+
 local function onFrame()
     if fakeSneakActive then omwself.controls.run = false end
     hudGait = omwself.controls.run and "RUN" or "WALK"
@@ -686,5 +709,7 @@ return {
     engineHandlers = {
         onUpdate = onUpdate,
         onFrame = onFrame,
+        onSave = onSave,
+        onLoad = onLoad,
     },
 }

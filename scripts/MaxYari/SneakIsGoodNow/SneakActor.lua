@@ -34,19 +34,20 @@ local sneakMult = 1
 -- spawns, having already resolved eligibility ITS side -- it's the only place that knows the multiplier AND
 -- works for targets beyond the mod's detection range (which never become observers, so sneakActive/sneakMult
 -- are never set on them -- i.e. anything sniped from a distance). So we just honor whatever it sends: a mult
--- means "eligible, freeze it"; nil means "not a sneak shot, clear any stale latch". Cleared once consumed or
--- expired. latchExpiry is a core.getSimulationTime() deadline.
+-- means "eligible, freeze it"; nil means "not a sneak shot, clear any stale latch". The latch has NO timeout:
+-- it stays valid until the hit consumes it, OR the player tells us via SneakRevoke that we've actually
+-- detected them -- and ONLY then. A slow projectile can be airborne arbitrarily long, so we never guess.
 local latchedMult = nil
-local latchExpiry = 0
 
 local function onSneakLatch(e)
-    if e.mult then
-        latchedMult = e.mult
-        latchExpiry = core.getSimulationTime() + (e.ttl or 3)
-    else
-        latchedMult = nil
-        latchExpiry = 0
-    end
+    latchedMult = e.mult  -- a number freezes the release-time bonus; nil clears any stale latch
+end
+
+-- We've actually detected the player (full detection or combat) while a latch was pending: cancel the
+-- pending ranged crit. Sent by the player script's detection loop. This is the only thing that drops a
+-- latch short of the hit consuming it.
+local function onSneakRevoke()
+    latchedMult = nil
 end
 
 
@@ -133,16 +134,18 @@ I.Combat.addOnHitHandler(function(a)
         local effMult = nil
         if isPlayerRanged then
             -- Ranged is latch-driven: the player froze release-time eligibility (and the mult) when the
-            -- projectile loosed, so detection finishing mid-flight can't strip it, AND it covers targets
-            -- sniped from beyond detection range that never get a live SneakBonus (sneakActive stays false).
-            -- Fall back to live state for a point-blank shot whose latch hasn't been processed yet.
-            if latchedMult and core.getSimulationTime() < latchExpiry then
+            -- projectile loosed, so detection finishing mid-flight can't strip it -- the latch is dropped
+            -- only by an explicit SneakRevoke (we actually detected them) or by being consumed here. It
+            -- also covers targets sniped from beyond detection range that never get a live SneakBonus
+            -- (sneakActive stays false). Fall back to live state for a point-blank shot whose latch
+            -- event hasn't been processed yet.
+            if latchedMult then
                 effMult = latchedMult
             elseif sneakActive then
                 effMult = sneakMult
             end
             -- Consume the latch (on a hit or a miss) so it can't carry to a later shot.
-            latchedMult = nil; latchExpiry = 0
+            latchedMult = nil
         elseif sneakActive then
             effMult = sneakMult
         end
@@ -170,6 +173,7 @@ return {
     eventHandlers = {
         MaxYariUtil_GetFollowTargets = onGetFollowTargets,
         [DEFS.e.SneakBonus] = onSneakBonus,
-        [DEFS.e.SneakLatch] = onSneakLatch
+        [DEFS.e.SneakLatch] = onSneakLatch,
+        [DEFS.e.SneakRevoke] = onSneakRevoke
     }
 }

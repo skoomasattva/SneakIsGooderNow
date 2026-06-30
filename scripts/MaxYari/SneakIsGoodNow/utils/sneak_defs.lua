@@ -12,6 +12,7 @@ return {
         ReportAttack = prefix.."ReportAttack",
         SneakBonus = prefix.."SneakBonus",
         SneakHit = prefix.."SneakHit",
-        SneakLatch = prefix.."SneakLatch"
+        SneakLatch = prefix.."SneakLatch",
+        SneakRevoke = prefix.."SneakRevoke"
     }
 }
